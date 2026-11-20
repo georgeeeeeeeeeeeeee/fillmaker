@@ -1,0 +1,75 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JUCE_TAG: 8.0.12
+  PLUGINVAL_VERSION: v1.0.4
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (universal)
+            os: macos-latest
+            configure_args: -G Ninja
+            pluginval_zip: pluginval_macOS.zip
+            pluginval: pluginval/pluginval.app/Contents/MacOS/pluginval
+            tests: build/FillMakerTests_artefacts/Release/FillMakerTests
+          - name: Windows (x64)
+            os: windows-latest
+            configure_args: -A x64
+            pluginval_zip: pluginval_Windows.zip
+            pluginval: pluginval/pluginval.exe
+            tests: build/FillMakerTests_artefacts/Release/FillMakerTests.exe
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: JUCE
+        run: git clone --quiet --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE.git juce-src
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFILLMAKER_JUCE_PATH="$PWD/juce-src" ${{ matrix.configure_args }}
+
+      - name: Build plug-in, tests and tool
+        run: cmake --build build --config Release --target FillMaker_VST3 FillMakerTests FillMakerCli --parallel
+
+      - name: Tests
+        run: ${{ matrix.tests }}
+
+      - name: Download pluginval
+        run: |
+          curl -fsSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/$PLUGINVAL_VERSION/${{ matrix.pluginval_zip }}"
+          mkdir pluginval
+          cd pluginval && cmake -E tar xf ../pluginval.zip
+
+      - name: pluginval (strictness 10)
+        run: |
+          "${{ matrix.pluginval }}" --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 \
+              "build/FillMaker_artefacts/Release/VST3/Fill Maker.vst3"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FillMaker-${{ runner.os }}
+          path: build/FillMaker_artefacts/Release/VST3/
