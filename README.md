@@ -146,5 +146,6 @@ pattern through a lock-free triple buffer and never allocates (MIDI buffers are 
 - **Live usually keeps Space for its own transport,** so use the AUDITION button there.
 - **The preview voice is a sketch:** a few synthesised percussion sounds chosen by pitch. Send
   auditions to your kit with *Audition to MIDI out* to hear the real thing.
-- macOS build only so far (the code is portable; Windows hasn't been built or tested); ad-hoc
-  signed, so macOS may ask once before opening the standalone app.
+- Windows: CI builds the 64-bit VST3 and passes the tests and pluginval there, but it hasn't been
+  tried in a Windows host yet. The macOS build is ad-hoc signed, so macOS may ask once before opening
+  the standalone app.
