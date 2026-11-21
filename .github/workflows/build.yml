@@ -1,8 +1,12 @@
 name: Build
 
+# Mac (universal VST3, AU and standalone) and Windows (x64 VST3): tests, pluginval at strictness 10,
+# auval, packages. Runs on pushes to main, pull requests, release tags (v*) and by hand. A tag also
+# collects both packages into a draft GitHub release, checked and published by hand.
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -28,12 +32,14 @@ jobs:
             pluginval_zip: pluginval_macOS.zip
             pluginval: pluginval/pluginval.app/Contents/MacOS/pluginval
             tests: build/FillMakerTests_artefacts/Release/FillMakerTests
+            platform: mac
           - name: Windows (x64)
             os: windows-latest
             configure_args: -A x64
             pluginval_zip: pluginval_Windows.zip
             pluginval: pluginval/pluginval.exe
             tests: build/FillMakerTests_artefacts/Release/FillMakerTests.exe
+            platform: windows
 
     defaults:
       run:
@@ -41,6 +47,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version
+        run: |
+          VERSION=$(tr -d '\r' < CMakeLists.txt | sed -nE 's/^project\(FillMaker VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
+          if [ -z "$VERSION" ]; then echo "::error::Couldn't read the version from CMakeLists.txt"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match CMakeLists.txt version $VERSION"; exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Ninja (macOS)
         if: runner.os == 'macOS'
@@ -53,10 +68,24 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFILLMAKER_JUCE_PATH="$PWD/juce-src" ${{ matrix.configure_args }}
 
       - name: Build plug-in, tests and tool
-        run: cmake --build build --config Release --target FillMaker_VST3 FillMakerTests FillMakerCli --parallel
+        run: |
+          TARGETS="FillMaker_VST3 FillMakerTests FillMakerCli"
+          if [ "$RUNNER_OS" = "macOS" ]; then TARGETS="$TARGETS FillMaker_AU FillMaker_Standalone"; fi
+          cmake --build build --config Release --target $TARGETS --parallel
 
       - name: Tests
         run: ${{ matrix.tests }}
+
+      - name: Check universal binaries and sign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ART="build/FillMaker_artefacts/Release"
+          for b in "AU/Fill Maker.component" "VST3/Fill Maker.vst3" "Standalone/Fill Maker.app"; do
+            bundle="$ART/$b"
+            bin=$(find "$bundle/Contents/MacOS" -type f -maxdepth 1 | head -1)
+            lipo "$bin" -verify_arch arm64 x86_64
+            codesign --force --deep --sign - "$bundle"
+          done
 
       - name: Download pluginval
         run: |
@@ -69,7 +98,86 @@ jobs:
           "${{ matrix.pluginval }}" --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 \
               "build/FillMaker_artefacts/Release/VST3/Fill Maker.vst3"
 
-      - uses: actions/upload-artifact@v4
+      - name: auval (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "build/FillMaker_artefacts/Release/AU/Fill Maker.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -v aumu Fmkr Lvrs
+
+      - name: Package
+        run: |
+          NAME="FillMaker-$VERSION-${{ matrix.platform }}"
+          STAGE="dist/$NAME"
+          mkdir -p "$STAGE"
+          ART=build/FillMaker_artefacts/Release
+          tr -d '\r' < packaging/README.txt | sed -e "s/@VERSION@/$VERSION/g" -e "s|@SOURCE_URL@|https://github.com/$GITHUB_REPOSITORY/tree/v$VERSION|g" > "$STAGE/README.txt"
+          tr -d '\r' < LICENSE > "$STAGE/LICENSE.txt"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+              ditto "$ART/AU/Fill Maker.component" "$STAGE/Fill Maker.component"
+              ditto "$ART/VST3/Fill Maker.vst3" "$STAGE/Fill Maker.vst3"
+              ditto "$ART/Standalone/Fill Maker.app" "$STAGE/Fill Maker.app"
+              ditto -c -k --keepParent "$STAGE" "dist/$NAME.zip"
+          else
+              for f in README.txt LICENSE.txt; do sed -i 's/$/\r/' "$STAGE/$f"; done
+              cp -R "$ART/VST3/Fill Maker.vst3" "$STAGE/"
+              (cd dist && cmake -E tar cf "$NAME.zip" --format=zip "$NAME")
+          fi
+          echo "PACKAGE=dist/$NAME.zip" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: FillMaker-${{ runner.os }}
-          path: build/FillMaker_artefacts/Release/VST3/
+          path: ${{ env.PACKAGE }}
+          archive: false
+          if-no-files-found: error
+
+  release:
+    name: Draft GitHub release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: FillMaker-*
+          path: dist
+          merge-multiple: true
+          skip-decompress: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          ls -la
+          test "$(ls FillMaker-*.zip | wc -l)" -eq 2
+          sha256sum FillMaker-*.zip > SHA256SUMS.txt
+
+      - name: Release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "Download the zip for your computer below. Each has the plug-in, an install guide (\`README.txt\`) and the licence."
+            echo
+            echo "- **macOS** 11 or later, Apple silicon and Intel (VST3, AU and a standalone app): \`FillMaker-$VERSION-mac.zip\`"
+            echo "- **Windows** 64-bit (VST3): \`FillMaker-$VERSION-windows.zip\`"
+            echo
+            echo "**macOS:** the plug-in isn't notarised by Apple (it has an ad-hoc signature), so macOS blocks it the first time. The install guide explains the one-time step."
+            echo
+            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" dist/FillMaker-*.zip dist/SHA256SUMS.txt --clobber
+          else
+              gh release create "$GITHUB_REF_NAME" dist/FillMaker-*.zip dist/SHA256SUMS.txt \
+                  --draft --verify-tag --title "Fill Maker ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          fi

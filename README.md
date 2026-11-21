@@ -7,6 +7,8 @@ ratchets and fills that fall apart on purpose.
 
 ![Fill Maker](docs/ui-0.png)
 
+**Download:** [Releases](https://github.com/georgeeeeeeeeeeeeee/fillmaker/releases) has VST3, AU and a standalone app for macOS (Apple silicon and Intel) and VST3 for 64-bit Windows, each with an install guide. Free and open source (AGPLv3, see [LICENSE](LICENSE)).
+
 ## Using it in Ableton Live
 
 1. **Install:** copy `Fill Maker.vst3` to `~/Library/Audio/Plug-Ins/VST3/` (the build below does this
