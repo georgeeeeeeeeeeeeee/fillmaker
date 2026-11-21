@@ -38,6 +38,7 @@ GenerationPanel::GenerationPanel (FillMakerProcessor& p)
     behaviour.setTooltip ("The fill's personality: familiar structures and beat-aware accents, through to displacement, odd groupings, extremes and silences");
     addAndMakeVisible (behaviour);
     behaviourAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.state(), "behaviour", behaviour);
+    lvrs::Spotlight::tag (behaviour, "behaviour");
     behaviour.setDoubleClickReturnValue (true, 25.0);
     behaviourValue.setFont (ui::mono (12.0f, true));
     behaviourValue.setJustificationType (juce::Justification::centred);
@@ -453,6 +454,14 @@ std::vector<juce::Component*> VariationPanel::tabComponents (int t)
         case 2: return { &grooveAware, &grooveStrength, &follow, &capture, &importMidi, &clearGroove, &grooveText };
         default: return { &euclidSteps, &euclidPulses, &euclidRotation, &channel, &ratchetMax, &poly, &preview, &thru, &auditionMidi };
     }
+}
+
+int VariationPanel::tabOf (const juce::Component& c)
+{
+    for (int i = 0; i < 4; ++i)
+        for (auto* t : tabComponents (i))
+            if (t == &c || t->isParentOf (&c)) return i;
+    return -1;
 }
 
 void VariationPanel::showTab (int t)

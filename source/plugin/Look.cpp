@@ -149,6 +149,7 @@ Knob::Knob (FillMakerProcessor& p, const juce::String& id, const juce::String& n
     addAndMakeVisible (slider);
     addAndMakeVisible (caption);
     att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.state(), id, slider);
+    lvrs::Spotlight::tag (*this, id);
     if (auto* q = p.state().getParameter (id)) slider.setDoubleClickReturnValue (true, q->convertFrom0to1 (q->getDefaultValue()));
 }
 
@@ -170,6 +171,7 @@ Menu::Menu (FillMakerProcessor& p, const juce::String& id, const juce::String& n
     addAndMakeVisible (box);
     addAndMakeVisible (caption);
     att = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.state(), id, box);
+    lvrs::Spotlight::tag (*this, id);
 }
 
 void Menu::resized()
@@ -189,6 +191,7 @@ Chip::Chip (FillMakerProcessor& p, const juce::String& id, const juce::String& t
     setColour (juce::TextButton::textColourOnId, ui::bg);
     getProperties().set ("fontSize", 10.0);
     att = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.state(), id, *this);
+    lvrs::Spotlight::tag (*this, id);
 }
 
 void heading (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& t)

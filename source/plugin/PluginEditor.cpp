@@ -88,6 +88,11 @@ FillMakerEditor::FillMakerEditor (FillMakerProcessor& p)
     status.setFont (ui::mono (11.0f));
     status.setColour (juce::Label::textColourId, ui::faint);
     status.setJustificationType (juce::Justification::centredRight);
+    spotlight = std::make_unique<lvrs::Spotlight> (p, *this);
+    spotlight->onReveal = [this] (const juce::String&, juce::Component& c) {
+        if (const int t = variation.tabOf (c); t >= 0) variation.showTab (t);
+    };
+    addAndMakeVisible (*spotlight);
     setSize (1240, 760);
     startTimerHz (30);
 }
@@ -238,6 +243,7 @@ void FillMakerEditor::paint (juce::Graphics& g)
 
 void FillMakerEditor::resized()
 {
+    if (spotlight != nullptr) spotlight->setBounds (getLocalBounds());
     auto r = getLocalBounds().reduced (10, 6);
     top = r.removeFromTop (38);
     {

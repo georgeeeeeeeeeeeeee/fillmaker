@@ -3,6 +3,7 @@
 // one cool one (notes, playhead), monospaced numbers, small caps labels.
 
 #include "plugin/PluginProcessor.h"
+#include "plugin/Spotlight.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 

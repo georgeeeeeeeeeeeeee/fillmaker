@@ -31,6 +31,7 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
     PatternView& patternView() noexcept { return roll; }
     VariationPanel& variationPanel() noexcept { return variation; }
+    lvrs::Spotlight& getSpotlight() { return *spotlight; }
 
 private:
     void timerCallback() override;
@@ -56,5 +57,6 @@ private:
     juce::TooltipWindow tips { this, 700 };
     std::vector<juce::File> userPresetFiles;
     juce::String shownPreset;
+    std::unique_ptr<lvrs::Spotlight> spotlight;   // shows what Key Map / MIDI Map / automation is moving
 };
 } // namespace fm

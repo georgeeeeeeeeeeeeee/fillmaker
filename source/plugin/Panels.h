@@ -74,6 +74,8 @@ public:
     void resized() override;
     void refresh();
     void showTab (int);
+    int tabOf (const juce::Component&);
+    int currentTab() const noexcept { return tab; }   // which tab holds it (-1: always shown)
     juce::TextButton undo { "Undo" }, redo { "Redo" };
 
 private:

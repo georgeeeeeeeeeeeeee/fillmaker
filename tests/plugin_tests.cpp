@@ -276,6 +276,33 @@ TEST_CASE ("plug-in: user presets and pattern files round trip")
     CHECK (p->writeDragFile().existsAsFile());
 }
 
+TEST_CASE ("plug-in: a mapped control lights up and its tab opens; the window's own moves don't")
+{
+    auto p = make();
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p->createEditor());
+    auto& fe = dynamic_cast<FillMakerEditor&> (*ed);
+    auto& sp = fe.getSpotlight();
+    fe.variationPanel().showTab (0);
+    const auto hostSet = [&p] (const char* id, float v) {   // as Live's Key Map / MIDI Map does it
+        auto* q = p->state().getParameter (id);
+        REQUIRE (q != nullptr);
+        q->setValue (v);
+        q->sendValueChangedMessageToListeners (v);
+    };
+    sp.poll();
+    CHECK (sp.litCount() == 0);
+    hostSet ("euclidRotation", 0.5f);   // on the More tab
+    sp.poll();
+    CHECK (sp.newest() == "euclidRotation");
+    CHECK (fe.variationPanel().currentTab() == 3);   // the More tab came up
+    auto* q = p->state().getParameter ("behaviour");
+    q->beginChangeGesture();
+    q->setValueNotifyingHost (0.9f);
+    q->endChangeGesture();
+    sp.poll();
+    CHECK (sp.newest() == "euclidRotation");
+}
+
 TEST_CASE ("plug-in: the editor opens, draws every tab, and survives edits")
 {
     auto p = make();
